@@ -1,0 +1,76 @@
+#!/bin/bash
+# tv - control the Philips Android TV over ADB.
+# Commands live in $TV_LIB/<category>.sh; each file registers its own
+# commands (like Django apps), and the category is the file's name.
+IP=${TV_IP:-192.168.1.19}
+TV_LIB=${TV_LIB:-$(dirname "$(readlink -f "$0")")/lib}
+
+declare -A CMD_FN CMD_USAGE CMD_DESC CMD_LONG CMD_CAT CMD_ALIAS
+CATS=()
+
+# register <name> <function> <usage-args> <description> [long help]
+register() {
+  CMD_FN[$1]=$2
+  CMD_USAGE[$1]=$3
+  CMD_DESC[$1]=$4
+  CMD_LONG[$1]=$5
+  CMD_CAT[$1]=$CURRENT_CAT
+}
+alias_cmd() { CMD_ALIAS[$1]=$2; }
+
+# helpers shared by the command modules
+connect() { adb connect "$IP" >/dev/null || exit 1; }
+A() { adb -s "$IP:5555" "$@"; }
+send_key() { connect; A shell input keyevent "$1"; }
+# package part of an alias / package / package/activity
+pkg_of() { local t=${APPS[$1]:-$1}; echo "${t%%/*}"; }
+
+for f in "$TV_LIB"/*.sh; do
+  CURRENT_CAT=$(basename "$f" .sh)
+  CATS+=("$CURRENT_CAT")
+  . "$f"
+done
+
+aliases_of() {
+  local a out=()
+  for a in "${!CMD_ALIAS[@]}"; do [[ ${CMD_ALIAS[$a]} == "$1" ]] && out+=("$a"); done
+  echo "${out[*]}"
+}
+
+usage() {
+  echo "Usage: tv <command> [args]"
+  echo
+  echo "Type 'tv help <command>' for help on a specific command."
+  local cat name al
+  for cat in "${CATS[@]}"; do
+    echo
+    echo "[$cat]"
+    for name in $(for n in "${!CMD_CAT[@]}"; do [[ ${CMD_CAT[$n]} == "$cat" ]] && echo "$n"; done | sort); do
+      al=$(aliases_of "$name")
+      printf '    %-12s %s\n' "$name" "${CMD_DESC[$name]}${al:+ (alias: $al)}"
+    done
+  done
+  echo
+  echo "Env: TV_IP (default 192.168.1.19), TV_LIB (default lib/ next to the tv script)"
+}
+
+cmd_help() {
+  [[ -z $1 ]] && { usage; return; }
+  local name=${CMD_ALIAS[$1]:-$1}
+  [[ -n ${CMD_FN[$name]} ]] || { echo "tv help: unknown command '$1'" >&2; return 2; }
+  echo "usage: tv $name ${CMD_USAGE[$name]}"
+  echo
+  echo "${CMD_DESC[$name]}"
+  [[ -n ${CMD_LONG[$name]} ]] && { echo; echo "${CMD_LONG[$name]}"; }
+  local al; al=$(aliases_of "$name")
+  [[ -n $al ]] && { echo; echo "aliases: $al"; }
+  return 0
+}
+
+sub=${1:-help}
+(( $# )) && shift
+case $sub in -h|--help) sub=help ;; esac
+name=${CMD_ALIAS[$sub]:-$sub}
+fn=${CMD_FN[$name]}
+[[ -n $fn ]] || { echo "tv: unknown command '$sub'" >&2; usage >&2; exit 2; }
+"$fn" "$@"
