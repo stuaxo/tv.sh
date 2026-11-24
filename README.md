@@ -2,7 +2,7 @@
 
 A small bash script to control a Philips Android TV over ADB.
 
-I now use [tvbee](https://github.com/stuaxo/tvbee), a Rust port, myself, but
+I now use [tveee](https://github.com/stuaxo/tveee), a Rust port, myself, but
 this version has the advantage that the code is easy to read and tweak.
 
 Needs `adb` (and `scrcpy` for `tv mirror`). Put `tv` on your PATH (a symlink
